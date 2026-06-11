@@ -173,7 +173,6 @@ const LEGENDS = [
   {name: "gREAZYMEISTER", year: 2016, rating: 80, nat: "NO", mental: 3},
   {name: "Remkoe", year: 2017, rating: 82, nat: "NL", mental: 4},
   {name: "Deevo", year: 2017, rating: 87, nat: "UK", mental: 4},
-  {name: "Gignac", year: 2017, rating: 80, nat: "FR", mental: 3}, // Maestro
   {name: "Torment", year: 2018, rating: 89, nat: "US", mental: 4},
   {name: "Gimmick", year: 2018, rating: 85, nat: "US", mental: 4},
   {name: "GarrettG", year: 2019, rating: 91, nat: "US", mental: 5},
@@ -232,6 +231,25 @@ const COACHES = [
    (règle absolue : Team BDS 2022 & Team BDS 2024).
    `roster` sert au tirage du buteur en finale.
    ------------------------------------------------------------ */
+/* ================== ÉQUIPES ACTUELLES (RLCS 2026) ==================
+   Joueurs qui jouent DÉJÀ ensemble dans le monde réel : tirer deux (ou trois)
+   coéquipiers actuels garantit une excellente cohésion d'équipe.
+   ⚠️ ÉCHANTILLON de mémoire — vérifiez/corrigez ces rosters sur
+   liquipedia.net (RLCS 2026) ; les noms doivent être EXACTEMENT
+   ceux de PLAYERS pour que la cohésion s'applique. */
+const CURRENT_TEAMS = [
+  { name: "Karmine Corp",   roster: ["Vatira", "Atow.", "juicy"] },
+  { name: "Team BDS",       roster: ["M0nkey M00n", "ExoTiiK", "dralii"] },
+  { name: "Team Vitality",  roster: ["Zen", "Seikoo", "nass"] },
+  { name: "Team Falcons",   roster: ["trk511", "Kiileerrz", "Ahmad"] },
+  { name: "Twisted Minds",  roster: ["Rw9", "Nwpo", "Twiz"] },
+  { name: "G2 Stride",      roster: ["BeastMode", "Daniel", "Atomic"] },
+  { name: "NRG",            roster: ["GarrettG", "Justin.", "AYYJAYY"] },
+  { name: "Spacestation",   roster: ["Lj", "Chronic", "2Piece"] },
+  { name: "FURIA",          roster: ["yANXNZ", "Lostt.", "diaz"] },
+  { name: "PWR",            roster: ["Fever", "Superlachie", "bananahead"] },
+];
+
 const HIST_TEAMS = [
   { name: "Team BDS 2022",      rating: 99, unbeatable: true,  roster: ["M0nkey M00n", "Extra", "Seikoo"] },
   { name: "Team BDS 2024",      rating: 99, unbeatable: true,  roster: ["M0nkey M00n", "ExoTiiK", "dralii"] },

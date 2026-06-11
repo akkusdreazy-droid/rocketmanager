@@ -178,11 +178,18 @@ function playedTogether(a, b) {
   return HIST_TEAMS.some((t) => t.roster?.includes(a.name) && t.roster?.includes(b.name));
 }
 
+/** Deux joueurs sont coéquipiers ACTUELS (RLCS 2026, monde réel). */
+function currentTeammates(a, b) {
+  return CURRENT_TEAMS.some((t) => t.roster.includes(a.name) && t.roster.includes(b.name));
+}
+
 /**
  * Cohésion 0–5, par paire de joueurs, avec priorité :
- *   Pays identique (3) > Langue identique (2) > Région identique (1) > rien (0)
- * + bonus Historique (+1) si la paire a déjà joué ensemble.
- * Score max : 3 paires × 4 = 12, ramené sur 5.
+ *   Coéquipiers actuels RLCS 2026 (4 = score max direct)
+ *   > Pays identique (3) > Langue identique (2) > Région identique (1) > rien (0)
+ * + bonus Historique (+1, plafonné à 4) si la paire a déjà joué ensemble par le passé.
+ * Score max : 3 paires × 4 = 12, ramené sur 5. Un trio qui joue déjà ensemble
+ * dans le monde réel a donc automatiquement une cohésion de 5/5.
  */
 function computeCohesion() {
   const ps = state.players;
@@ -190,10 +197,17 @@ function computeCohesion() {
   let total = 0;
   for (const [i, j] of pairs) {
     const a = ps[i], b = ps[j];
-    if      (a.nat === b.nat)             total += 3; // même pays
-    else if (langOf(a) === langOf(b))     total += 2; // même langue
-    else if (regionOf(a) === regionOf(b)) total += 1; // même région
-    if (playedTogether(a, b))             total += 1; // déjà coéquipiers
+    let score;
+    if (currentTeammates(a, b)) {
+      score = 4; // ils jouent DÉJÀ ensemble : alchimie immédiate
+    } else {
+      if      (a.nat === b.nat)             score = 3; // même pays
+      else if (langOf(a) === langOf(b))     score = 2; // même langue
+      else if (regionOf(a) === regionOf(b)) score = 1; // même région
+      else                                  score = 0;
+      if (playedTogether(a, b)) score = Math.min(score + 1, 4); // ex-coéquipiers
+    }
+    total += score;
   }
   return clamp(Math.round((total * 5) / 12), 0, 5);
 }
@@ -844,11 +858,17 @@ async function initMercato() {
   }
 }
 
-/** Remplacement mercato : animation slot + retour preview pour ré-assigner rôle/tactique. */
-async function mercatoReplace(slot) {
-  showScreen("screen-roster", "Mercato · Remplacement");
+/**
+ * Remplacement d'un joueur : animation slot + retour preview pour ré-assigner rôle/tactique.
+ * @param {number} slot
+ * @param {string} nextLabel — libellé du bouton de suite
+ * @param {Function} nextFn — action de suite (par défaut : preview puis Spring Split)
+ */
+async function mercatoReplace(slot, nextLabel = "Ajuster les tactiques →",
+                              nextFn = () => initPreviewPhase("Lancer le Spring Split", startSpringSplit)) {
+  showScreen("screen-roster", "Transfert");
   $("#rosterSub").textContent = "Sélection des joueurs";
-  state.draftingPhase = false; // pas de boutons reroll de draft au mercato
+  state.draftingPhase = false; // pas de boutons reroll de draft hors phase 2
 
   const old = state.players[slot];
   state.usedNames.delete(old.name);
@@ -872,9 +892,29 @@ async function mercatoReplace(slot) {
 
   const b = document.createElement("button");
   b.className = "btn btn-gold";
-  b.textContent = "Ajuster les tactiques →";
-  b.onclick = () => initPreviewPhase("Lancer le Spring Split", startSpringSplit);
+  b.textContent = nextLabel;
+  b.onclick = nextFn;
   $("#rosterActions").appendChild(b);
+}
+
+/**
+ * Transfert pré-Worlds : une fois la qualification acquise, possibilité de
+ * remplacer UN joueur avant de lancer les Worlds (ou de garder l'équipe).
+ */
+function preWorldsTransfer() {
+  showScreen("screen-mercato", "Transfert pré-Worlds");
+  $("#mercatoText").innerHTML =
+    `Votre billet pour les <strong>Worlds</strong> est en poche.<br>
+     Dernière fenêtre de transfert : vous pouvez remplacer <strong>un joueur</strong>
+     avant le plus grand tournoi de l'année — ou faire confiance au groupe.`;
+
+  const actions = $("#mercatoActions");
+  actions.innerHTML = "";
+  addBtn(actions, "btn-gold", "Garder l'équipe → Worlds", startWorlds);
+  state.players.forEach((p, i) => {
+    addBtn(actions, "btn-ghost", `Transférer ${p.name} 🎲`, () =>
+      mercatoReplace(i, "Ajuster les tactiques →", () => initPreviewPhase("Lancer les Worlds", startWorlds)));
+  });
 }
 
 /* ============================================================
@@ -895,7 +935,7 @@ async function initQuali() {
   const threshold = RULES.QUALI_DIRECT[state.org.region] ?? 45;
   if (pts >= threshold) {
     verdict.innerHTML = `<span class="green">✅ QUALIFICATION DIRECTE AUX WORLDS !</span>`;
-    addBtn(actions, "btn-gold", "Direction les Worlds →", startWorlds);
+    addBtn(actions, "btn-gold", "Direction les Worlds →", preWorldsTransfer);
   } else {
     verdict.innerHTML = `<span class="gold">⚠️ Passage par le LCQ — gagnez 2 matchs sur 3 !</span>`;
     addBtn(actions, "btn-primary", "Jouer le LCQ", playLCQ);
@@ -929,7 +969,7 @@ async function playLCQ() {
 
   if (w >= 2) {
     verdict.innerHTML = `<span class="green">✅ LCQ remporté ! Les Worlds vous attendent.</span>`;
-    addBtn(actions, "btn-gold", "Direction les Worlds →", startWorlds);
+    addBtn(actions, "btn-gold", "Direction les Worlds →", preWorldsTransfer);
   } else {
     verdict.innerHTML = `<span class="red">❌ Éliminé au LCQ.</span>`;
     addBtn(actions, "btn-primary", "Voir le bilan", () => endGame(false, "Si proche… le LCQ aura eu raison de votre équipe."));
@@ -1096,6 +1136,16 @@ const engine = {
   cars: [{ x: 50, y: 80 }, { x: 50, y: 20 }],
 };
 
+/** Replace IMMÉDIATEMENT la balle au centre et les voitures à leur camp (coup d'envoi). */
+function engineResetPositions() {
+  engine.ball = { x: 50, y: 50, vx: 0, vy: 0 };
+  engine.cars[0] = { x: 50, y: 82 };
+  engine.cars[1] = { x: 50, y: 18 };
+  placeOnPitch($("#ball"), 50, 50);
+  placeOnPitch($("#car1"), 50, 82, engine.ball);
+  placeOnPitch($("#car2"), 50, 18, engine.ball);
+}
+
 /** Boucle d'animation : balle qui rebondit + voitures qui chassent la balle. */
 function engineStart() {
   const ballEl = $("#ball"), car1El = $("#car1"), car2El = $("#car2");
@@ -1173,6 +1223,7 @@ async function animateGoal(weScored) {
 const gameClock = {
   id: null,
   t: 300, // secondes de jeu restantes
+  scoreTied: true, // mis à jour par renderGameScore : la PROLONGATION n'existe qu'à égalité
 
   start() {
     this.stop();
@@ -1204,7 +1255,8 @@ const gameClock = {
   render(draining = false) {
     const el = $("#gameTimer");
     if (!el) return;
-    if (this.t <= 0 && !draining) {
+    // PROLONGATION uniquement si le score est à ÉGALITÉ quand le temps tombe à 0
+    if (this.t <= 0 && !draining && this.scoreTied) {
       el.textContent = "PROLONGATION";
       el.classList.add("overtime");
     } else {
@@ -1216,8 +1268,9 @@ const gameClock = {
   },
 };
 
-/** Met à jour le score de la game en cours sous le terrain. */
+/** Met à jour le score de la game en cours sous le terrain (et l'état d'égalité). */
 function renderGameScore(us, them, oppName) {
+  gameClock.scoreTied = (us === them);
   $("#gameScore").textContent = `${state.org.tag} ${us} – ${them} ${oppName}`;
 }
 
@@ -1232,6 +1285,7 @@ async function startFinal() {
   $("#finalActions").innerHTML = "";
   $("#gameTimer").textContent = "5:00";
   renderGameScore(0, 0, opp.name);
+  engineResetPositions(); // balle au centre dès l'ouverture de l'écran
 
   /* Règle de Boom en finale : mental 3 ⇒ 75 % de craquage, mental 4 ⇒ 20 %.
      Si l'équipe craque, son winrate en finale s'effondre. */
@@ -1291,7 +1345,8 @@ async function startFinal() {
 async function playFinalGame(gameNo, opp, pWin) {
   logFinal(`— Game ${gameNo} —`);
 
-  // Bannière "GAME N" sur le terrain
+  // Bannière "GAME N" sur le terrain — la balle est replacée au CENTRE (coup d'envoi)
+  engineResetPositions();
   const gb = $("#gameBanner");
   gb.textContent = `GAME ${gameNo}`;
   gb.hidden = false;
