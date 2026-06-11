@@ -250,19 +250,37 @@ const CURRENT_TEAMS = [
   { name: "PWR",            roster: ["Fever", "Superlachie", "bananahead"] },
 ];
 
+/* ================== ÉQUIPES HISTORIQUES / ADVERSAIRES WORLDS ==================
+   - year : les équipes pré-2019 sont bridées (jamais en playoffs, rating réduit)
+   - mental : utilisé par le Trashtalk en finale (≤ 2 = sensible au chambrage)
+   ⚠️ Les équipes 2025/2026 sont reconstituées de mémoire (LAN RLCS) :
+   vérifiez les rosters sur liquipedia.net et ajustez librement. */
 const HIST_TEAMS = [
-  { name: "Team BDS 2022",      rating: 99, unbeatable: true,  roster: ["M0nkey M00n", "Extra", "Seikoo"] },
-  { name: "Team BDS 2024",      rating: 99, unbeatable: true,  roster: ["M0nkey M00n", "ExoTiiK", "dralii"] },
-  { name: "NRG 2019",           rating: 92, roster: ["GarrettG", "Jstn.", "Turbopolsa"] },
-  { name: "Renault Vitality 2019", rating: 93, roster: ["Kaydop", "Fairy Peak!", "Scrub Killa"] },
-  { name: "Dignitas 2018",      rating: 94, roster: ["ViolentPanda", "Kaydop", "Turbopolsa"] },
-  { name: "Cloud9 2018",        rating: 91, roster: ["SquishyMuffinz", "Torment", "Gimmick"] },
-  { name: "iBP Cosmic 2016",    rating: 84, roster: ["Kronovi", "Lachinio", "0ver_Zer0"] },
-  { name: "FlipSid3 2016",      rating: 85, roster: ["Kuxir97", "Markydooda", "gREAZYMEISTER"] },
-  { name: "Karmine Corp 2023",  rating: 94, roster: ["Vatira", "Atow.", "ExoTiiK"] },
-  { name: "Team Falcons 2025",  rating: 94, roster: ["trk511", "Rw9", "Kiileerrz"] },
-  { name: "G2 Stride 2024",     rating: 93, roster: ["Daniel", "BeastMode", "Atomic"] },
-  { name: "Gen.G 2023",         rating: 92, roster: ["Chronic", "ApparentlyJack", "Noly"] },
-  { name: "FURIA 2024",         rating: 91, roster: ["yANXNZ", "Lostt.", "drufinho"] },
-  { name: "Moist Esports 2023", rating: 91, roster: ["Vatira", "rise.", "Daniel"] },
+  { name: "Team BDS 2022",      year: 2022, rating: 99, mental: 5, unbeatable: true,  roster: ["M0nkey M00n", "Extra", "Seikoo"] },
+  { name: "Team BDS 2024",      year: 2024, rating: 99, mental: 5, unbeatable: true,  roster: ["M0nkey M00n", "ExoTiiK", "dralii"] },
+  { name: "NRG 2019",           year: 2019, rating: 92, mental: 4, roster: ["GarrettG", "Jstn.", "Turbopolsa"] },
+  { name: "Renault Vitality 2019", year: 2019, rating: 93, mental: 3, roster: ["Kaydop", "Fairy Peak!", "Scrub Killa"] },
+  { name: "Dignitas 2018",      year: 2018, rating: 94, mental: 4, roster: ["ViolentPanda", "Kaydop", "Turbopolsa"] },
+  { name: "Cloud9 2018",        year: 2018, rating: 91, mental: 3, roster: ["SquishyMuffinz", "Torment", "Gimmick"] },
+  { name: "iBP Cosmic 2016",    year: 2016, rating: 84, mental: 3, roster: ["Kronovi", "Lachinio", "0ver_Zer0"] },
+  { name: "FlipSid3 2016",      year: 2016, rating: 85, mental: 2, roster: ["Kuxir97", "Markydooda", "gREAZYMEISTER"] },
+  { name: "Karmine Corp 2023",  year: 2023, rating: 94, mental: 3, roster: ["Vatira", "Atow.", "ExoTiiK"] },
+  { name: "Gen.G 2023",         year: 2023, rating: 92, mental: 3, roster: ["Chronic", "ApparentlyJack", "Noly"] },
+  { name: "Moist Esports 2023", year: 2023, rating: 91, mental: 2, roster: ["Vatira", "rise.", "Daniel"] },
+
+  // ---- LAN RLCS 2024-2026 (reconstituées de mémoire, à vérifier) ----
+  { name: "Team Falcons 2025",  year: 2025, rating: 95, mental: 4, roster: ["trk511", "Kiileerrz", "Ahmad"] },
+  { name: "G2 Stride 2024",     year: 2024, rating: 93, mental: 3, roster: ["Daniel", "BeastMode", "Atomic"] },
+  { name: "FURIA 2024",         year: 2024, rating: 91, mental: 3, roster: ["yANXNZ", "Lostt.", "drufinho"] },
+  { name: "Karmine Corp 2025",  year: 2025, rating: 95, mental: 4, roster: ["Vatira", "Atow.", "juicy"] },
+  { name: "Team Vitality 2025", year: 2025, rating: 94, mental: 4, roster: ["Zen", "Radosin", "Alpha54"] },
+  { name: "Twisted Minds 2025", year: 2025, rating: 92, mental: 3, roster: ["Rw9", "Nwpo", "Twiz"] },
+  { name: "Geekay Esports 2025", year: 2025, rating: 91, mental: 3, roster: ["Nwpo", "Ahmad", "Twiz"] },
+  { name: "NRG 2025",           year: 2025, rating: 92, mental: 3, roster: ["GarrettG", "Justin.", "AYYJAYY"] },
+  { name: "Spacestation 2025",  year: 2025, rating: 91, mental: 3, roster: ["Lj", "Chronic", "2Piece"] },
+  { name: "Complexity 2025",    year: 2025, rating: 90, mental: 2, roster: ["Firstkiller", "Wahvey", "CHEESE."] },
+  { name: "Dignitas 2025",      year: 2025, rating: 90, mental: 3, roster: ["Joreuz", "oaly.", "Archie"] },
+  { name: "Wildcard 2025",      year: 2025, rating: 89, mental: 2, roster: ["Aris", "Frosty", "Sosa"] },
+  { name: "PWR 2025",           year: 2025, rating: 87, mental: 3, roster: ["Fever", "Superlachie", "bananahead"] },
+  { name: "FURIA 2026",         year: 2026, rating: 92, mental: 3, roster: ["yANXNZ", "Lostt.", "diaz"] },
 ];

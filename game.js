@@ -90,6 +90,9 @@ const RULES = {
   // En dessous de ce total de points avant un Major, l'équipe n'y est pas qualifiée
   MAJOR_MIN_POINTS: 20,
 
+  // Les équipes historiques antérieures à cette année ne vont jamais en playoffs des Worlds
+  PLAYOFFS_MIN_YEAR: 2019,
+
   // Probabilité de "Mental Boom" au mercato selon le mental d'équipe
   MERCATO_BOOM: { 0: 95, 1: 75, 2: 50, 3: 30, 4: 5, 5: 0 },
 
@@ -989,20 +992,39 @@ function rosterConflict(team) {
   return team.roster?.some((n) => state.players.some((p) => p?.name === n)) ?? false;
 }
 
-/** Tire N adversaires historiques distincts, sans conflit de joueur avec votre roster. */
-function drawOpponents(n, exclude = new Set()) {
-  let pool = HIST_TEAMS.filter((t) => !exclude.has(t.name) && !rosterConflict(t));
+/** Tire N adversaires historiques distincts, sans conflit de joueur avec votre roster.
+ *  @param {boolean} playoffsOnly — exclut les équipes trop anciennes (avant 2019) des playoffs. */
+function drawOpponents(n, exclude = new Set(), playoffsOnly = false) {
+  const eligible = (t) =>
+    !exclude.has(t.name) &&
+    !rosterConflict(t) &&
+    (!playoffsOnly || (t.year ?? 2024) >= RULES.PLAYOFFS_MIN_YEAR);
+  let pool = HIST_TEAMS.filter(eligible);
   // Garde-fou : si le filtre vide le pool (roster très chargé), on relâche la contrainte
   if (pool.length < n) pool = HIST_TEAMS.filter((t) => !exclude.has(t.name));
   return shuffle(pool).slice(0, n);
 }
 
-/** Probabilité de victoire contre une équipe historique (Worlds : sans malus régional). */
+/**
+ * Probabilité de gagner un match aux Worlds contre une équipe historique.
+ * - Bonus de FORME : bons résultats de saison + bon mental + bon coach.
+ * - Les équipes trop anciennes (avant 2019) sont moins fortes qu'à leur époque.
+ */
 function matchWinChance(opp) {
-  if (opp.unbeatable) return 0; // Team BDS 2022 / 2024 : invincibles
+  if (opp.unbeatable) return 0; // BDS 2022 / 2024 : intouchables
   const wr = computeWinrate(true);
+
+  // Bonus de forme : une équipe qui a réussi sa saison arrive lancée
+  const formBonus =
+    (state.points >= 90 ? 6 : state.points >= 70 ? 4 : state.points >= 50 ? 2 : 0) +
+    (computeMental() >= 4 ? 2 : 0) +
+    ((state.coach?.m_bonus ?? 0) >= 2 ? 2 : 0);
+
+  // Les gloires du passé (avant 2019) ont pris un coup de vieux
+  const oppRating = opp.rating - ((opp.year ?? 2024) < RULES.PLAYOFFS_MIN_YEAR ? 6 : 0);
+
   // Léger ajustement par l'écart de niveau (plancher relevé : jamais désespéré)
-  return clamp(wr + (computeGen() - opp.rating) * 1.5, 15, 97);
+  return clamp(wr + formBonus + (computeGen() - oppRating) * 1.5, 15, 97);
 }
 
 async function startWorlds() {
@@ -1094,7 +1116,7 @@ async function startPlayoffs() {
   ];
 
   for (const [i, stage] of stages.entries()) {
-    const opp = drawOpponents(1, faced)[0];
+    const opp = drawOpponents(1, faced, true)[0]; // playoffs : équipes 2019+ uniquement
     faced.add(opp.name);
     await sleep(1400);
 
@@ -1118,8 +1140,8 @@ async function startPlayoffs() {
     }
   }
 
-  // Finale : adversaire tiré parmi les équipes restantes (BDS possible…)
-  state.finalOpponent = drawOpponents(1, faced)[0];
+  // Finale : adversaire tiré parmi les équipes modernes restantes (BDS possible…)
+  state.finalOpponent = drawOpponents(1, faced, true)[0];
   await sleep(900);
   const next = $("#btnWorldsNext");
   next.hidden = false;
@@ -1128,56 +1150,109 @@ async function startPlayoffs() {
 }
 
 /* ============================================================
-   13. GRANDE FINALE — BO7 + MOTEUR 2D
+   13. GRANDE FINALE — BO7 + MOTEUR 2D (3 contre 3)
    ============================================================ */
+/* Bornes du terrain en % (la balle et les voitures ne sortent JAMAIS de là) */
+const FIELD = { minX: 10, maxX: 90, minY: 7, maxY: 93 };
+
 const engine = {
   raf: null,
-  ball: { x: 50, y: 50, vx: 0.5, vy: 0.4 },
-  cars: [{ x: 50, y: 80 }, { x: 50, y: 20 }],
+  ball: { x: 50, y: 50, vx: 0.4, vy: 0.4 },
+  cars: [], // 6 voitures {x, y, vx, vy, el, img, team, offX, offY, chase}
 };
+
+/**
+ * Construit les 6 voitures (3 vs 3) avec le pseudo de chaque joueur :
+ * en bas votre équipe (Car1), en haut l'adversaire (Car2, roster historique).
+ */
+function setupCars(opp) {
+  const layer = $("#carsLayer");
+  layer.innerHTML = "";
+  engine.cars = [];
+
+  const oppNames = (opp.roster ?? []).slice(0, 3);
+  while (oppNames.length < 3) oppNames.push(opp.name);
+
+  /* Chaque voiture a un rôle : chasseur (fonce sur la balle), soutien, couverture.
+     offX/offY décalent sa position cible par rapport à la balle. */
+  const layout = [
+    // --- Votre équipe (bas du terrain) ---
+    { team: 0, name: state.players[0].name, x: 50, y: 78, chase: 1.0, offX: 0,   offY: 4  },
+    { team: 0, name: state.players[1].name, x: 32, y: 84, chase: 0.65, offX: -12, offY: 10 },
+    { team: 0, name: state.players[2].name, x: 68, y: 84, chase: 0.65, offX: 12,  offY: 10 },
+    // --- Adversaire (haut du terrain) ---
+    { team: 1, name: oppNames[0], x: 50, y: 22, chase: 1.0, offX: 0,   offY: -4  },
+    { team: 1, name: oppNames[1], x: 32, y: 16, chase: 0.65, offX: -12, offY: -10 },
+    { team: 1, name: oppNames[2], x: 68, y: 16, chase: 0.65, offX: 12,  offY: -10 },
+  ];
+
+  for (const c of layout) {
+    const unit = document.createElement("div");
+    unit.className = "car-unit";
+    unit.innerHTML = `<img src="assets/${c.team === 0 ? "Car1" : "Car2"}.png" alt="">
+                      <span class="car-name">${c.name}</span>`;
+    layer.appendChild(unit);
+    engine.cars.push({ ...c, vx: 0, vy: 0, el: unit, img: unit.querySelector("img") });
+  }
+}
 
 /** Replace IMMÉDIATEMENT la balle au centre et les voitures à leur camp (coup d'envoi). */
 function engineResetPositions() {
   engine.ball = { x: 50, y: 50, vx: 0, vy: 0 };
-  engine.cars[0] = { x: 50, y: 82 };
-  engine.cars[1] = { x: 50, y: 18 };
   placeOnPitch($("#ball"), 50, 50);
-  placeOnPitch($("#car1"), 50, 82, engine.ball);
-  placeOnPitch($("#car2"), 50, 18, engine.ball);
+  const homes = [[50, 78], [32, 84], [68, 84], [50, 22], [32, 16], [68, 16]];
+  engine.cars.forEach((c, i) => {
+    c.x = homes[i][0]; c.y = homes[i][1]; c.vx = 0; c.vy = 0;
+    placeCar(c);
+  });
 }
 
-/** Boucle d'animation : balle qui rebondit + voitures qui chassent la balle. */
+/** Boucle d'animation : balle fluide qui rebondit + 6 voitures en poursuite lissée. */
 function engineStart() {
-  const ballEl = $("#ball"), car1El = $("#car1"), car2El = $("#car2");
+  engineStop();
+  const ballEl = $("#ball");
   const b = engine.ball;
   b.x = 50; b.y = 50;
-  b.vx = rand(-0.7, 0.7); b.vy = rand(-0.7, 0.7) || 0.5;
-  engine.cars[0] = { x: 50, y: 82 };
-  engine.cars[1] = { x: 50, y: 18 };
+  const ang = rand(0, Math.PI * 2);
+  b.vx = Math.cos(ang) * 0.55;
+  b.vy = Math.sin(ang) * 0.55 || 0.4;
   let t = 0;
 
   const frame = () => {
     t++;
-    // Balle : déplacement + rebonds sur les bords du terrain (en %)
+    // ---- Balle : inertie + rebonds amortis, TOUJOURS dans les bornes ----
     b.x += b.vx; b.y += b.vy;
-    if (b.x < 8 || b.x > 92) { b.vx *= -1; b.x = clamp(b.x, 8, 92); }
-    if (b.y < 6 || b.y > 94) { b.vy *= -1; b.y = clamp(b.y, 6, 94); }
+    if (b.x < FIELD.minX || b.x > FIELD.maxX) { b.vx *= -0.92; b.x = clamp(b.x, FIELD.minX, FIELD.maxX); }
+    if (b.y < FIELD.minY || b.y > FIELD.maxY) { b.vy *= -0.92; b.y = clamp(b.y, FIELD.minY, FIELD.maxY); }
+    // Légère friction + vitesse minimale pour que le jeu vive
+    b.vx *= 0.996; b.vy *= 0.996;
+    const speed = Math.hypot(b.vx, b.vy);
+    if (speed < 0.25) { b.vx *= 1.12; b.vy *= 1.12; }
 
-    // Voitures : poursuite de la balle avec inertie + zigzag
-    engine.cars.forEach((c, i) => {
-      const wobble = Math.sin(t / 14 + i * 3) * 4;
-      c.x += (b.x - c.x) * 0.045 + wobble * 0.04;
-      c.y += (b.y - c.y) * 0.045;
-      // "Frappe" : si une voiture touche la balle, impulsion aléatoire
-      if (Math.hypot(c.x - b.x, c.y - b.y) < 7) {
-        b.vx = rand(-1.1, 1.1);
-        b.vy = rand(-1.1, 1.1) || 0.6;
+    // ---- Voitures : accélération douce vers la cible (balle + décalage de rôle) ----
+    for (const c of engine.cars) {
+      const wob = Math.sin(t / 26 + c.offX) * 1.6;
+      const tx = clamp(b.x + c.offX * (1 - c.chase) + wob, FIELD.minX, FIELD.maxX);
+      const ty = clamp(b.y + c.offY * (1 - c.chase), FIELD.minY, FIELD.maxY);
+      // Accélération proportionnelle à la distance, vitesse plafonnée, friction
+      c.vx = (c.vx + (tx - c.x) * 0.0085 * c.chase) * 0.90;
+      c.vy = (c.vy + (ty - c.y) * 0.0085 * c.chase) * 0.90;
+      const v = Math.hypot(c.vx, c.vy), VMAX = 0.85;
+      if (v > VMAX) { c.vx = c.vx / v * VMAX; c.vy = c.vy / v * VMAX; }
+      c.x = clamp(c.x + c.vx, FIELD.minX, FIELD.maxX);
+      c.y = clamp(c.y + c.vy, FIELD.minY, FIELD.maxY);
+
+      // "Frappe" : contact avec la balle ⇒ impulsion dans la direction de la voiture
+      if (Math.hypot(c.x - b.x, c.y - b.y) < 6) {
+        const push = Math.atan2(b.y - c.y, b.x - c.x) + rand(-0.5, 0.5);
+        const force = rand(0.6, 1.0);
+        b.vx = Math.cos(push) * force;
+        b.vy = Math.sin(push) * force;
       }
-    });
+      placeCar(c);
+    }
 
     placeOnPitch(ballEl, b.x, b.y);
-    placeOnPitch(car1El, engine.cars[0].x, engine.cars[0].y, b);
-    placeOnPitch(car2El, engine.cars[1].x, engine.cars[1].y, b);
     engine.raf = requestAnimationFrame(frame);
   };
   engine.raf = requestAnimationFrame(frame);
@@ -1188,25 +1263,28 @@ function engineStop() {
   engine.raf = null;
 }
 
-/** Positionne un élément en % sur le terrain (et oriente les voitures vers la balle). */
-function placeOnPitch(el, x, y, lookAt = null) {
-  let rot = "";
-  if (lookAt) {
-    const ang = Math.atan2(lookAt.y - y, lookAt.x - x) * 180 / Math.PI + 90;
-    rot = ` rotate(${ang}deg)`;
-  }
+/** Positionne une voiture (rotation de l'image vers la balle, pseudo lisible). */
+function placeCar(c) {
+  const ang = Math.atan2(engine.ball.y - c.y, engine.ball.x - c.x) * 180 / Math.PI + 90;
+  c.el.style.left = c.x + "%";
+  c.el.style.top = c.y + "%";
+  c.img.style.transform = `rotate(${ang}deg)`;
+}
+
+/** Positionne un élément en % sur le terrain. */
+function placeOnPitch(el, x, y) {
   el.style.left = x + "%";
   el.style.top = y + "%";
-  el.style.transform = `translate(-50%, -50%)${rot}`;
+  el.style.transform = "translate(-50%, -50%)";
 }
 
 /** Animation de but : la balle file vers la cage (haut = on marque, bas = on encaisse). */
 async function animateGoal(weScored) {
   engineStop();
   const b = engine.ball;
-  const targetY = weScored ? 3 : 97; // cage orange en haut, bleue en bas (field.png)
-  const targetX = 50;
-  const steps = 18;
+  const targetY = weScored ? 4 : 96; // cage du haut = on marque, cage du bas = on encaisse
+  const targetX = rand(42, 58);      // dans la largeur de la cage
+  const steps = 22;
   const ballEl = $("#ball");
   for (let i = 1; i <= steps; i++) {
     b.x += (targetX - b.x) / (steps - i + 2);
@@ -1224,16 +1302,28 @@ const gameClock = {
   id: null,
   t: 300, // secondes de jeu restantes
   scoreTied: true, // mis à jour par renderGameScore : la PROLONGATION n'existe qu'à égalité
+  RATE: 2.4, // secondes de jeu écoulées toutes les 100 ms réelles
 
   start() {
     this.stop();
     this.t = 300;
     this.render();
-    // Temps accéléré : ~1,8 s de jeu toutes les 100 ms réelles
     this.id = setInterval(() => {
-      this.t = Math.max(0, this.t - 1.8);
+      this.t = Math.max(0, this.t - this.RATE);
       this.render();
     }, 100);
+  },
+
+  /** Fait défiler le chrono jusqu'à `target` (temps restant), puis résout. */
+  runTo(target) {
+    this.stop();
+    return new Promise((resolve) => {
+      this.id = setInterval(() => {
+        this.t = Math.max(target, this.t - this.RATE);
+        this.render();
+        if (this.t <= target) { this.stop(); resolve(); }
+      }, 100);
+    });
   },
 
   stop() {
@@ -1284,6 +1374,7 @@ async function startFinal() {
   $("#finalLog").innerHTML = "";
   $("#finalActions").innerHTML = "";
   $("#gameTimer").textContent = "5:00";
+  setupCars(opp);            // 3 vs 3 avec les pseudos des joueurs de la game
   renderGameScore(0, 0, opp.name);
   engineResetPositions(); // balle au centre dès l'ouverture de l'écran
 
@@ -1301,20 +1392,29 @@ async function startFinal() {
   if (opp.unbeatable) { await sleep(900); logFinal("⚫ Face à cette équipe, l'histoire est déjà écrite…"); }
 
   let us = 0, them = 0, game = 0;
-  let timeoutUsed = false; // un SEUL timeout autorisé sur toute la finale
+  let timeoutUsed = false;     // un SEUL timeout autorisé pour VOUS sur toute la finale
+  let oppTimeoutUsed = false;  // l'adversaire aussi n'en prend qu'un
+  let oppLossStreak = 0;       // défaites consécutives de l'adversaire
 
   while (us < 4 && them < 4) {
     game++;
     const r = await playFinalGame(game, opp, pWin);
     r.weWin ? us++ : them++;
+    oppLossStreak = r.weWin ? oppLossStreak + 1 : 0;
     $("#finalUsScore").textContent = us;
     $("#finalThemScore").textContent = them;
     logFinal(`${r.weWin ? "✅" : "❌"} Game ${game} : ${state.org.tag} ${r.usGoals}–${r.themGoals} ${opp.name}`);
     logFinal(`   Buteurs : ${r.scorers.join(", ")}`);
     await sleep(700);
 
-    // ---- Pause entre les games (timeout possible UNE seule fois) ----
     if (us < 4 && them < 4) {
+      // ---- Timeout ADVERSE : après 2 défaites d'affilée, leur coach réagit (aucun effet) ----
+      if (oppLossStreak >= 2 && !oppTimeoutUsed) {
+        oppTimeoutUsed = true;
+        logFinal(`⏸ TIMEOUT de ${opp.name} ! Leur coach tente de briser votre élan… mais le momentum est de votre côté.`);
+        await sleep(1500);
+      }
+      // ---- Votre pause entre les games (timeout possible UNE seule fois) ----
       const out = await timeoutBreak(pWin, opp, timeoutUsed);
       pWin = out.pWin;
       if (out.usedTimeout) timeoutUsed = true;
@@ -1369,15 +1469,39 @@ async function playFinalGame(gameNo, opp, pWin) {
     ...Array(themGoals).fill(false),
   ]);
 
+  /* Chaque but a une MINUTE précise : le chrono pilote la game.
+     Temps restants décroissants, espacés d'au moins 15 s de jeu. */
+  const goalTimes = sequence
+    .map(() => randI(25, 275))
+    .sort((a, b) => b - a)
+    .map((t, k, arr) => (k === 0 ? t : Math.min(t, arr[k - 1] - 15)))
+    .map((t) => Math.max(t, 5));
+
+  /* Si le score est à égalité avant le DERNIER but : soit prolongation (~1 fois sur 3,
+     but en or après le 0:00), soit but décisif dans les dernières secondes. */
+  let preUs = 0, preThem = 0;
+  sequence.slice(0, -1).forEach((g) => (g ? preUs++ : preThem++));
+  const tiedBeforeLast = preUs === preThem;
+  const overtime = tiedBeforeLast && Math.random() < 0.35;
+  const last = goalTimes.length - 1;
+  if (overtime) {
+    goalTimes[last] = 0;
+  } else if (tiedBeforeLast) {
+    // But décisif au buzzer (dans la dernière minute de jeu)
+    goalTimes[last] = Math.min(randI(5, 45), (goalTimes[last - 1] ?? 60) - 10);
+  }
+
   const scorers = [];
   let liveUs = 0, liveThem = 0;
   renderGameScore(0, 0, opp.name);
-  gameClock.start();
+  gameClock.t = 300;
+  gameClock.render();
   engineStart();
-  await sleep(RULES.FINAL_GAME_DELAY); // phase de jeu avant le premier but
 
-  for (const ourGoal of sequence) {
-    await animateGoal(ourGoal); // la balle file vers la cage
+  for (let k = 0; k < sequence.length; k++) {
+    const ourGoal = sequence[k];
+    await gameClock.runTo(goalTimes[k]); // le chrono décide du moment du but
+    await animateGoal(ourGoal);          // la balle file vers la cage
 
     // Son de but (coupé après 2 s) + flash + secousse du terrain
     sfx.goal();
@@ -1401,12 +1525,11 @@ async function playFinalGame(gameNo, opp, pWin) {
     await sleep(1300);
     banner.hidden = true;
 
-    // Remise en jeu : le moteur repart pour le but suivant
-    engineStart();
-    await sleep(rand(1200, 2200));
+    // Remise en jeu : le moteur repart, le chrono pilotera le but suivant
+    if (k < sequence.length - 1) engineStart();
   }
 
-  await gameClock.drainToZero(); // le timer atteint toujours 0:00 à la fin de la game
+  await gameClock.drainToZero(); // le timer affiche 0:00 au coup de sifflet final
   engineStop();
   return { weWin, usGoals, themGoals, scorers };
 }
@@ -1421,10 +1544,11 @@ function pulseScore(weScored) {
 
 /**
  * Pause entre deux games : TIMEOUT (une seule fois par finale) ou CONTINUER.
- * - Motiver l'équipe        → petit bonus de winrate
- * - Réprimander l'équipe    → effondrement mental… sauf si des Légendes encaissent
- *                             la critique (petit bonus à la place)
- * - Trashtalk l'adversaire  → aucun effet sur le match
+ * - Motiver l'équipe        → vrai bonus de winrate, d'autant plus grand que
+ *                             l'équipe est bonne (GEN + mental)
+ * - Réprimander l'équipe    → aucun effet : les joueurs haussent les épaules
+ * - Trashtalk l'adversaire  → efficace UNIQUEMENT si l'équipe en face a un
+ *                             mental faible (≤ 2), sinon aucun effet
  * @returns {Promise<{pWin:number, usedTimeout:boolean}>}
  */
 function timeoutBreak(pWin, opp, timeoutUsed) {
@@ -1442,24 +1566,25 @@ function timeoutBreak(pWin, opp, timeoutUsed) {
         actions.innerHTML = "";
 
         addBtn(actions, "btn-gold", "💪 Motiver l'équipe", () => {
-          logFinal("📣 Timeout — le coach motive ses joueurs, le banc s'enflamme !");
-          done(opp.unbeatable ? pWin : pWin + 5, true);
+          // Plus l'équipe est bonne (GEN, mental), plus le discours porte
+          const boost = clamp(4 + Math.round((computeGen() - 85) / 2) + (computeMental() >= 4 ? 3 : 0), 4, 14);
+          logFinal(`📣 Timeout — le coach motive ses joueurs, le banc s'enflamme ! L'équipe répond présent.`);
+          done(opp.unbeatable ? pWin : pWin + boost, true);
         });
 
         addBtn(actions, "btn-ghost", "😡 Réprimander l'équipe", () => {
-          const hasLegend = state.players.some((p) => p.isLegend);
-          if (hasLegend) {
-            logFinal("🧊 Timeout — la critique est dure, mais les Légendes en ont vu d'autres. L'équipe se resserre.");
-            done(opp.unbeatable ? pWin : pWin + 3, true);
-          } else {
-            logFinal("💔 Timeout — la soufflante de trop… le vestiaire s'effondre mentalement.");
-            done(Math.max(pWin * 0.5, 2), true);
-          }
+          logFinal("😡 Timeout — la soufflante tombe à plat… les joueurs haussent les épaules. Aucun effet.");
+          done(pWin, true);
         });
 
         addBtn(actions, "btn-ghost", "🗣 Trashtalk l'équipe adverse", () => {
-          logFinal(`🗣 Timeout — vous chambrez ${opp.name}. Ils n'ont même pas levé les yeux. Aucun effet.`);
-          done(pWin, true);
+          if ((opp.mental ?? 3) <= 2 && !opp.unbeatable) {
+            logFinal(`🗣 Timeout — vous chambrez ${opp.name}… et ça marche ! Leur mental fragile vacille, ils perdent leurs moyens.`);
+            done(pWin + 6, true);
+          } else {
+            logFinal(`🗣 Timeout — vous chambrez ${opp.name}. Ils n'ont même pas levé les yeux. Aucun effet.`);
+            done(pWin, true);
+          }
         });
       });
     }

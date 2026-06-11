@@ -345,15 +345,29 @@ h1, h2, h3, .brand, .btn, .final-score, .slot-item, .org-card-tag {
 
 /* Les assets balle/voitures ont un fond noir : mix-blend-mode "screen"
    le rend visuellement transparent sur le terrain sombre. */
-.ball, .car {
-  position: absolute; mix-blend-mode: screen; pointer-events: none;
-  will-change: transform; filter: drop-shadow(0 4px 8px rgba(0,0,0,.6));
-}
 .ball {
-  width: 9%; z-index: 3;
+  position: absolute; mix-blend-mode: screen; pointer-events: none;
+  will-change: left, top; width: 8%; z-index: 3;
   filter: drop-shadow(0 0 10px rgba(46,168,255,.55)) drop-shadow(0 4px 8px rgba(0,0,0,.6));
 }
-.car  { width: 11%; z-index: 2; }
+
+/* Voitures 3v3 : une unité = image (qui pivote) + pseudo (qui reste droit) */
+.cars-layer { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.car-unit {
+  position: absolute; width: 9%; transform: translate(-50%, -50%);
+  will-change: left, top;
+}
+.car-unit img {
+  display: block; width: 100%; mix-blend-mode: screen;
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,.6));
+  will-change: transform;
+}
+.car-name {
+  position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  margin-top: 1px; font-family: 'Rajdhani'; font-weight: 600; font-size: .58rem;
+  letter-spacing: .03em; color: #fff; white-space: nowrap;
+  text-shadow: 0 0 4px rgba(0,0,0,.95), 0 1px 2px rgba(0,0,0,.9);
+}
 
 /* Secousse du terrain à chaque but */
 .pitch.shake { animation: pitchShake .5s ease; }
