@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rocket Manager — Esport Team Builder</title>
+
+  <!-- Polices : Rajdhani (display) + Inter (texte) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===================== HEADER / HUD ===================== -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-rocket">ROCKET</span><span class="brand-manager">MANAGER</span>
+    </div>
+    <div class="phase-indicator" id="phaseIndicator">Draft de la structure</div>
+    <div class="hud" id="hud" hidden>
+      <div class="hud-item"><span class="hud-label">ORG</span><span id="hudOrg">—</span></div>
+      <div class="hud-item"><span class="hud-label">GEN</span><span id="hudGen" class="gold">—</span></div>
+      <div class="hud-item"><span class="hud-label">COHÉSION</span><span id="hudCoh">—</span></div>
+      <div class="hud-item"><span class="hud-label">MENTAL</span><span id="hudMental">—</span></div>
+      <div class="hud-item"><span class="hud-label">WINRATE</span><span id="hudWr" class="blue">—</span></div>
+    </div>
+  </header>
+
+  <main id="app">
+
+    <!-- ===================== ÉCRAN TITRE ===================== -->
+    <section class="screen active" id="screen-title">
+      <div class="title-hero">
+        <h1 class="mega-title"><span>ROCKET</span><span class="gold">MANAGER</span></h1>
+        <p class="subtitle">Draftez votre structure. Construisez votre roster. Soulevez le trophée des Worlds.</p>
+        <button class="btn btn-primary btn-xl" id="btnStart">Lancer la carrière</button>
+      </div>
+    </section>
+
+    <!-- ===================== PHASE 1 : DRAFT ORG ===================== -->
+    <section class="screen" id="screen-org">
+      <h2 class="screen-title">Phase 1 — <span class="gold">Tirage de la structure</span></h2>
+      <p class="screen-sub">La roulette décide de votre destin. <span id="orgRerollsLabel">3 rerolls</span> disponibles.</p>
+
+      <div class="roulette-wrap">
+        <div class="roulette-marker"></div>
+        <div class="roulette-viewport" id="orgViewport">
+          <div class="roulette-strip" id="orgStrip"></div>
+        </div>
+        <div class="roulette-fade left"></div>
+        <div class="roulette-fade right"></div>
+      </div>
+
+      <div class="org-result card" id="orgResult" hidden>
+        <div class="org-result-logo" id="orgResultLogo"></div>
+        <div>
+          <div class="org-result-name" id="orgResultName"></div>
+          <div class="org-result-region" id="orgResultRegion"></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" id="btnOrgSpin">Lancer la roulette</button>
+        <button class="btn btn-ghost" id="btnOrgReroll" hidden>Reroll <span class="pill" id="orgRerollPill">3</span></button>
+        <button class="btn btn-gold" id="btnOrgAccept" hidden>Accepter la structure</button>
+      </div>
+    </section>
+
+    <!-- ===================== PHASE 2 : DRAFT ROSTER ===================== -->
+    <section class="screen" id="screen-roster">
+      <h2 class="screen-title">Phase 2 — <span class="gold">Draft du roster</span></h2>
+      <p class="screen-sub" id="rosterSub">Tirez vos 3 joueurs puis votre coach.</p>
+
+      <div class="roster-grid" id="rosterGrid">
+        <!-- 3 slots joueurs + 1 slot coach injectés par JS -->
+      </div>
+
+      <div class="slot-machine-wrap card" id="slotWrap" hidden>
+        <div class="slot-title" id="slotTitle">Sélection des joueurs</div>
+        <div class="slot-viewport">
+          <div class="slot-marker"></div>
+          <div class="slot-strip" id="slotStrip"></div>
+        </div>
+      </div>
+
+      <div class="actions" id="rosterActions"></div>
+    </section>
+
+    <!-- ===================== PHASE 3 : PREVIEW & TACTIQUES ===================== -->
+    <section class="screen" id="screen-preview">
+      <h2 class="screen-title">Phase 3 — <span class="gold">Preview & tactiques</span></h2>
+
+      <div class="preview-layout">
+        <div class="preview-team card" id="previewTeam"></div>
+
+        <div class="preview-side">
+          <div class="card stat-card">
+            <div class="stat-row"><span>Note générale (GEN)</span><strong id="pvGen" class="gold big">—</strong></div>
+            <div class="stat-row"><span>Cohésion</span><strong id="pvCohesion">—</strong></div>
+            <div class="stat-row"><span>Mental d'équipe</span><strong id="pvMental">—</strong></div>
+            <div class="stat-row"><span>Difficulté région</span><strong id="pvRegionDiff">—</strong></div>
+            <div class="stat-row total"><span>Winrate estimé</span><strong id="pvWinrate" class="blue big">—</strong></div>
+          </div>
+
+          <div class="card">
+            <h3 class="card-title">Tactique globale</h3>
+            <div class="tactic-list" id="tacticList"></div>
+          </div>
+
+          <button class="btn btn-gold btn-block" id="btnPreviewNext">Lancer le Winter Split</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== PHASE 4 : SAISON ===================== -->
+    <section class="screen" id="screen-season">
+      <h2 class="screen-title" id="seasonTitle">Winter Split</h2>
+      <p class="screen-sub">Points cumulés : <strong class="gold" id="seasonPoints">0</strong></p>
+      <div class="season-grid" id="seasonGrid"></div>
+      <div class="actions"><button class="btn btn-gold" id="btnSeasonNext" hidden>Continuer</button></div>
+    </section>
+
+    <!-- ===================== MERCATO ===================== -->
+    <section class="screen" id="screen-mercato">
+      <h2 class="screen-title">Mercato — <span class="gold">Intersaison</span></h2>
+      <div class="card mercato-card">
+        <p id="mercatoText">…</p>
+        <div class="actions" id="mercatoActions"></div>
+      </div>
+    </section>
+
+    <!-- ===================== QUALIFICATION WORLDS ===================== -->
+    <section class="screen" id="screen-quali">
+      <h2 class="screen-title">Qualification — <span class="gold">Worlds Championship</span></h2>
+      <div class="card quali-card">
+        <div class="stat-row"><span>Points de la saison</span><strong class="gold big" id="qualiPoints">—</strong></div>
+        <div class="quali-verdict" id="qualiVerdict"></div>
+        <div class="actions" id="qualiActions"></div>
+      </div>
+    </section>
+
+    <!-- ===================== PHASE 5 : WORLDS (SUISSE + BRACKET) ===================== -->
+    <section class="screen" id="screen-worlds">
+      <h2 class="screen-title">Worlds — <span class="gold" id="worldsStageTitle">Phase Suisse</span></h2>
+      <p class="screen-sub" id="worldsSub">3 victoires pour se qualifier, 3 défaites = élimination.</p>
+      <div class="swiss-record" id="swissRecord" hidden><span class="green" id="swissW">0</span>–<span class="red" id="swissL">0</span></div>
+      <div class="match-list" id="worldsMatches"></div>
+      <div class="actions"><button class="btn btn-gold" id="btnWorldsNext" hidden>Continuer</button></div>
+    </section>
+
+    <!-- ===================== GRANDE FINALE (MOTEUR 2D) ===================== -->
+    <section class="screen" id="screen-final">
+      <h2 class="screen-title gold">GRANDE FINALE — BO7</h2>
+      <div class="final-layout">
+        <div class="final-side">
+          <div class="final-team us">
+            <div class="final-team-name" id="finalUsName">—</div>
+            <div class="final-score" id="finalUsScore">0</div>
+          </div>
+          <div class="final-vs">VS</div>
+          <div class="final-team them">
+            <div class="final-team-name" id="finalThemName">—</div>
+            <div class="final-score" id="finalThemScore">0</div>
+          </div>
+          <div class="final-log" id="finalLog"></div>
+          <div class="actions final-actions" id="finalActions"></div>
+        </div>
+
+        <!-- Moteur 2D : terrain vertical + balle + 2 voitures -->
+        <div class="pitch" id="pitch">
+          <img class="pitch-bg" src="assets/field.png" alt="Terrain">
+          <img class="car car2" id="car2" src="assets/Car2.png" alt="Adversaire">
+          <img class="ball" id="ball" src="assets/Ball.png" alt="Balle">
+          <img class="car car1" id="car1" src="assets/Car1.png" alt="Votre équipe">
+          <div class="goal-flash" id="goalFlash"></div>
+          <div class="game-banner" id="gameBanner" hidden></div>
+          <div class="scorer-banner" id="scorerBanner" hidden>
+            <div class="scorer-label">BUUUUT !</div>
+            <div class="scorer-name" id="scorerName"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== FIN (TROPHÉE / DÉFAITE) ===================== -->
+    <section class="screen" id="screen-end">
+      <div class="end-wrap" id="endWrap">
+        <div class="trophy-scene" id="trophyScene" hidden>
+          <div class="trophy-glow"></div>
+          <img src="assets/Trophy.jpg" class="trophy-img" alt="Trophée des Worlds">
+          <div class="confetti" id="confetti"></div>
+        </div>
+        <h2 class="end-title" id="endTitle">—</h2>
+        <p class="end-text" id="endText"></p>
+        <p class="goat-text" id="goatText" hidden>MonkeyMoon est vraiment le GOAT de ce jeu.</p>
+        <button class="btn btn-primary btn-xl" id="btnReplay">Rejouer</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Audio local (le son de but a été retiré : buts en animation seule) -->
+  <audio id="sfxVictory" src="assets/victory_3.mp3" preload="auto"></audio>
+
+  <script src="data.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
