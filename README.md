@@ -34,10 +34,10 @@ python3 -m http.server 8000
 
 1. **Cohésion** (par paire de joueurs, priorité décroissante) : même **pays** (3 pts) > même **langue** (2) > même **région** (1), **+1** si la paire a un **historique commun** (déjà coéquipiers dans une équipe de `HIST_TEAMS`). Total /12 ramené sur 5 — `computeCohesion()`.
 2. **Mental d'équipe** : `(mental J1 + J2 + J3 + bonus coach) / 4`, arrondi, bridé 0–5.
-3. **Winrate** : base selon GEN (40/52/64/76/88 %) + bonus **mental** (-4 à +6) + bonus **diversité des rôles** (3 rôles différents +4, deux identiques +2, trois identiques 0) + bonus **Légendes** (+3 / +6 / +8 selon le nombre, **plancher 90 % avec 3 Légendes**, qui garantissent aussi la finale des Worlds) + effet **tactique** + modificateur régional (hors Worlds).
+3. **Winrate** : base selon GEN (38/49/59/71/84 %) + bonus **mental** (-4 à +6) + bonus **diversité des rôles** (3 rôles différents +4, deux identiques +2, trois identiques 0) + bonus **Légendes** (+1 / +5 / +8 selon le nombre — une seule pèse peu, **plancher 90 % avec 3 Légendes**, qui garantissent aussi la finale des Worlds) + effet **tactique** + modificateur régional (hors Worlds).
 4. **Régions** : OCE **+10 %** et SAM **+8 %** de winrate en saison (une grosse équipe y écrase tout), MENA −4 %, NA −2 %, EU −6 %. Difficulté affichée en étoiles via `REGION_DIFFICULTY` (OCE ★ → EU ★★★★★).
 4. **Tactiques** : les 4 tactiques ont chacune un léger effet **aléatoire** (-2 à +4 %) tiré en début de partie — `rollTacticLuck()`.
-5. **Rerolls joueurs** : **3 Rerolls Random au total** pour tout le draft (compteur partagé entre les 3 slots).
+5. **Rerolls joueurs** : **3 Rerolls Random au total** (compteur partagé) + **1 Reroll Région par slot**, qui retire uniquement dans la région du joueur en place (un joueur EU ⇒ un nouveau joueur EU).
 6. **Points de split** : Top16 **6** / Quarts **8** / Demies **12** / Finaliste **15** / Champion **18**, Major **×2**. Moins de **20 points** avant un Major ⇒ non qualifié au Major.
 7. **Qualification Worlds** (seuil direct par région, sinon **LCQ garanti**, plus d'élimination sèche) : EU 45, NA 45, OCE 70, SAM 70 (MENA 55, interpolé).
 8. **Majors** : malus de winrate léger −10 % (−5 % si GEN ≥ 90, −2 % si GEN ≥ 95) — `RULES.majorPenalty()`.

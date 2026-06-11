@@ -65,18 +65,19 @@ const RULES = {
 
   // Winrate de base selon le GEN final : un gros potentiel doit payer
   winrateFromGen(gen) {
-    if (gen <= 80) return 40;
-    if (gen <= 85) return 52;
-    if (gen <= 90) return 64;
-    if (gen <= 95) return 76;
-    return 88;
+    if (gen <= 80) return 38;
+    if (gen <= 85) return 49;
+    if (gen <= 90) return 59;
+    if (gen <= 95) return 71;
+    return 84;
   },
 
   // Bonus de winrate selon le mental d'équipe (un bon vestiaire gagne les matchs serrés)
   MENTAL_WR_BONUS: { 0: -4, 1: -2, 2: 0, 3: 2, 4: 4, 5: 6 },
 
-  // Bonus de winrate par Légende au roster ; 3 Légendes ⇒ winrate plancher de 90 %
-  LEGEND_WR_BONUS: { 0: 0, 1: 3, 2: 6, 3: 8 },
+  // Bonus de winrate par Légende : une seule pèse peu, le vrai gain vient du collectif ;
+  // 3 Légendes ⇒ winrate plancher de 90 %
+  LEGEND_WR_BONUS: { 0: 0, 1: 1, 2: 5, 3: 8 },
   FULL_LEGEND_WR_FLOOR: 90,
 
   /* Aux Majors, le niveau mondial est un cran au-dessus — mais sans casser le fun. */
@@ -156,6 +157,7 @@ function resetState() {
     orgRerolls: RULES.ORG_REROLLS,
     players: [null, null, null],     // 3 slots joueurs
     playerRerolls: 3,                // 3 Rerolls Random au total pour tout le draft
+    regionRerolls: [true, true, true], // 1 Reroll Région par slot (région du joueur en place)
     coach: null,
     coachTriesLeft: RULES.COACH_TRIES,
     usedNames: new Set(),            // règle anti-doublon (par NOM, toutes versions)
@@ -466,10 +468,16 @@ function renderRosterGrid(activeSlot = -1) {
         <div class="pc-meta">${p.nat} · ${regionOf(p)} · Mental ${p.mental}/5${p.titles ? " · 🏆 " + p.titles : ""}</div>
         <div class="pc-rating">${p.rating}</div>
         <div class="pc-rerolls" data-slot="${i}"></div>`;
-      // Bouton de reroll (3 Rerolls Random partagés pour tout le draft)
+      // Boutons de reroll : 3 Rerolls Random partagés + 1 Reroll Région par slot
       const zone = card.querySelector(".pc-rerolls");
-      if (state.draftingPhase && state.playerRerolls > 0) {
-        zone.appendChild(makeRerollBtn(`Reroll Random (${state.playerRerolls})`, () => draftSlot(i, "random")));
+      if (state.draftingPhase) {
+        if (state.playerRerolls > 0) {
+          zone.appendChild(makeRerollBtn(`Reroll Random (${state.playerRerolls})`, () => draftSlot(i, "random")));
+        }
+        if (state.regionRerolls[i]) {
+          // Reroll Région : retire uniquement dans la région du joueur actuellement en place
+          zone.appendChild(makeRerollBtn(`Reroll ${regionOf(p)}`, () => draftSlot(i, "region")));
+        }
       }
     }
     grid.appendChild(card);
@@ -501,16 +509,28 @@ function makeRerollBtn(label, onClick) {
 /**
  * Tirage d'un slot joueur.
  * @param {number} slot  0–2
- * @param {"initial"|"random"} mode — "random" consomme un des 3 Rerolls partagés
+ * @param {"initial"|"random"|"region"} mode
+ *   - "random" consomme un des 3 Rerolls partagés
+ *   - "region" (1× par slot) : nouveau joueur de la MÊME région que celui en place
  */
 async function draftSlot(slot, mode) {
   state.draftingPhase = true;
 
-  if (mode === "random") {
-    if (state.playerRerolls <= 0) return; // garde-fou
-    state.playerRerolls--;
+  let pool;
+  let regionLabel = null;
+  if (mode === "region") {
+    if (!state.regionRerolls[slot] || !state.players[slot]) return; // garde-fou
+    state.regionRerolls[slot] = false;
+    regionLabel = regionOf(state.players[slot]);
+    pool = availablePlayers(regionLabel);
+    if (pool.length <= 1) pool = availablePlayers(); // garde-fou : région épuisée
+  } else {
+    if (mode === "random") {
+      if (state.playerRerolls <= 0) return; // garde-fou
+      state.playerRerolls--;
+    }
+    pool = availablePlayers();
   }
-  let pool = availablePlayers();
 
   // Si on reroll, l'ancien joueur libère son nom
   const old = state.players[slot];
@@ -527,7 +547,7 @@ async function draftSlot(slot, mode) {
   const wrap = $("#slotWrap");
   wrap.hidden = false;
   $("#slotTitle").textContent =
-    `${SLOT_LABELS[slot]} — ${mode === "random" ? "Reroll Random" : "Sélection des joueurs"}`;
+    `${SLOT_LABELS[slot]} — ${mode === "region" ? "Reroll Région (" + regionLabel + ")" : mode === "random" ? "Reroll Random" : "Sélection des joueurs"}`;
   await spinVertical($("#slotStrip"), wrap.querySelector(".slot-viewport"), pool, winner, renderPersonItem);
   await sleep(500);
   wrap.hidden = true;
@@ -1236,6 +1256,7 @@ async function playFinalGame(gameNo, opp, pWin) {
     scorers.push(`${scorer} (${ourGoal ? state.org.tag : opp.name})`);
     ourGoal ? liveUs++ : liveThem++;
     const banner = $("#scorerBanner");
+    $("#scorerLabel").textContent = `GAME ${gameNo}`;
     $("#scorerName").textContent = `${scorer} · ${ourGoal ? state.org.tag : opp.name} — ${liveUs}-${liveThem}`;
     banner.hidden = false;
     pulseScore(ourGoal);
@@ -1365,7 +1386,14 @@ function bindEvents() {
     spinOrg();
   };
   $("#btnOrgAccept").onclick = () => initRosterPhase();
-  $("#btnReplay").onclick = () => { resetState(); refreshHUD(); showScreen("screen-title", "Draft de la structure"); };
+  $("#btnReplay").onclick = () => {
+    // Couper la musique de célébration avant de relancer une carrière
+    const v = $("#sfxVictory");
+    if (v) { v.pause(); v.currentTime = 0; }
+    resetState();
+    refreshHUD();
+    showScreen("screen-title", "Draft de la structure");
+  };
 }
 
 resetState();

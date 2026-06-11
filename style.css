@@ -377,6 +377,9 @@ h1, h2, h3, .brand, .btn, .final-score, .slot-item, .org-card-tag {
 .goal-flash.on { animation: goalFlash .9s ease; }
 @keyframes goalFlash { 0% {opacity:0;} 25% {opacity:1;} 100% {opacity:0;} }
 
+/* L'attribut hidden doit TOUJOURS gagner (sinon les display:flex des classes l'écrasent) */
+[hidden] { display: none !important; }
+
 .scorer-banner {
   position: absolute; inset: 0; z-index: 6;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
