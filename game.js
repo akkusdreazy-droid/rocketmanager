@@ -245,6 +245,16 @@ function computeWinrate(worlds = false) {
    4. AUDIO
    ============================================================ */
 const sfx = {
+  /** Son de but : joué puis coupé après 2 secondes. */
+  goal() {
+    const a = $("#sfxGoal");
+    if (!a) return;
+    clearTimeout(sfx._goalCut);
+    a.currentTime = 0;
+    a.play().catch(() => {/* autoplay bloqué : ignoré */});
+    sfx._goalCut = setTimeout(() => { a.pause(); a.currentTime = 0; }, 2000);
+  },
+  _goalCut: null,
   victory: () => playSafe($("#sfxVictory")),
 };
 function playSafe(audioEl) {
@@ -930,10 +940,21 @@ async function playLCQ() {
    12. PHASE 5 — WORLDS : PHASE SUISSE & PLAYOFFS
    ============================================================ */
 
-/** Tire N adversaires historiques distincts. */
+/**
+ * Une équipe historique est en conflit si son roster contient un joueur
+ * portant le MÊME NOM qu'un joueur de votre équipe, quelle que soit l'année
+ * (ex. : M0nkey M00n 2026 ou 2022 ne peut pas affronter Team BDS 2022).
+ */
+function rosterConflict(team) {
+  return team.roster?.some((n) => state.players.some((p) => p?.name === n)) ?? false;
+}
+
+/** Tire N adversaires historiques distincts, sans conflit de joueur avec votre roster. */
 function drawOpponents(n, exclude = new Set()) {
-  const pool = shuffle(HIST_TEAMS.filter((t) => !exclude.has(t.name)));
-  return pool.slice(0, n);
+  let pool = HIST_TEAMS.filter((t) => !exclude.has(t.name) && !rosterConflict(t));
+  // Garde-fou : si le filtre vide le pool (roster très chargé), on relâche la contrainte
+  if (pool.length < n) pool = HIST_TEAMS.filter((t) => !exclude.has(t.name));
+  return shuffle(pool).slice(0, n);
 }
 
 /** Probabilité de victoire contre une équipe historique (Worlds : sans malus régional). */
@@ -972,7 +993,8 @@ async function startWorlds() {
   const faced = new Set();
 
   while (w < 3 && l < 3) {
-    const opp = drawOpponents(1, faced)[0] ?? pick(HIST_TEAMS);
+    const opp = drawOpponents(1, faced)[0]
+      ?? pick(HIST_TEAMS.filter((t) => !rosterConflict(t))) ?? pick(HIST_TEAMS);
     faced.add(opp.name);
     await sleep(1100);
 
@@ -1144,6 +1166,61 @@ async function animateGoal(weScored) {
   }
 }
 
+/* ---------- Horloge de game (style Rocket League : 5:00 décompté, accéléré) ----------
+   Le temps file en accéléré pendant la game et atteint TOUJOURS 0:00 à la fin
+   (drainToZero est appelé au coup de sifflet final). Si le 0 est atteint en cours
+   de jeu, on bascule en PROLONGATION jusqu'à la fin de la game. */
+const gameClock = {
+  id: null,
+  t: 300, // secondes de jeu restantes
+
+  start() {
+    this.stop();
+    this.t = 300;
+    this.render();
+    // Temps accéléré : ~1,8 s de jeu toutes les 100 ms réelles
+    this.id = setInterval(() => {
+      this.t = Math.max(0, this.t - 1.8);
+      this.render();
+    }, 100);
+  },
+
+  stop() {
+    clearInterval(this.id);
+    this.id = null;
+  },
+
+  /** Fin de game : vide rapidement le temps restant jusqu'à 0:00. */
+  async drainToZero() {
+    this.stop();
+    while (this.t > 0) {
+      this.t = Math.max(0, this.t - 12);
+      this.render(true); // pas d'affichage PROLONGATION pendant le drain
+      await sleep(40);
+    }
+    this.render(true);
+  },
+
+  render(draining = false) {
+    const el = $("#gameTimer");
+    if (!el) return;
+    if (this.t <= 0 && !draining) {
+      el.textContent = "PROLONGATION";
+      el.classList.add("overtime");
+    } else {
+      const total = Math.ceil(this.t);
+      const m = Math.floor(total / 60), s = total % 60;
+      el.textContent = `${m}:${String(s).padStart(2, "0")}`;
+      el.classList.remove("overtime");
+    }
+  },
+};
+
+/** Met à jour le score de la game en cours sous le terrain. */
+function renderGameScore(us, them, oppName) {
+  $("#gameScore").textContent = `${state.org.tag} ${us} – ${them} ${oppName}`;
+}
+
 async function startFinal() {
   showScreen("screen-final", "GRANDE FINALE");
   const opp = state.finalOpponent;
@@ -1153,6 +1230,8 @@ async function startFinal() {
   $("#finalThemScore").textContent = "0";
   $("#finalLog").innerHTML = "";
   $("#finalActions").innerHTML = "";
+  $("#gameTimer").textContent = "5:00";
+  renderGameScore(0, 0, opp.name);
 
   /* Règle de Boom en finale : mental 3 ⇒ 75 % de craquage, mental 4 ⇒ 20 %.
      Si l'équipe craque, son winrate en finale s'effondre. */
@@ -1237,13 +1316,16 @@ async function playFinalGame(gameNo, opp, pWin) {
 
   const scorers = [];
   let liveUs = 0, liveThem = 0;
+  renderGameScore(0, 0, opp.name);
+  gameClock.start();
   engineStart();
   await sleep(RULES.FINAL_GAME_DELAY); // phase de jeu avant le premier but
 
   for (const ourGoal of sequence) {
-    await animateGoal(ourGoal); // la balle file vers la cage (pas de son, juste l'animation)
+    await animateGoal(ourGoal); // la balle file vers la cage
 
-    // Flash + secousse du terrain
+    // Son de but (coupé après 2 s) + flash + secousse du terrain
+    sfx.goal();
     const pitch = $("#pitch");
     $("#goalFlash").classList.remove("on");
     pitch.classList.remove("shake");
@@ -1255,6 +1337,7 @@ async function playFinalGame(gameNo, opp, pWin) {
     const scorer = ourGoal ? pick(state.players).name : pick(opp.roster ?? [opp.name]);
     scorers.push(`${scorer} (${ourGoal ? state.org.tag : opp.name})`);
     ourGoal ? liveUs++ : liveThem++;
+    renderGameScore(liveUs, liveThem, opp.name);
     const banner = $("#scorerBanner");
     $("#scorerLabel").textContent = `GAME ${gameNo}`;
     $("#scorerName").textContent = `${scorer} · ${ourGoal ? state.org.tag : opp.name} — ${liveUs}-${liveThem}`;
@@ -1268,6 +1351,7 @@ async function playFinalGame(gameNo, opp, pWin) {
     await sleep(rand(1200, 2200));
   }
 
+  await gameClock.drainToZero(); // le timer atteint toujours 0:00 à la fin de la game
   engineStop();
   return { weWin, usGoals, themGoals, scorers };
 }

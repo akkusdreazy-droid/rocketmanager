@@ -321,6 +321,26 @@ h1, h2, h3, .brand, .btn, .final-score, .slot-item, .org-card-tag {
   aspect-ratio: 1051 / 1462; /* ratio de field.png */
   background: #000;
 }
+
+/* HUD sous le terrain : timer de game + score du match en cours */
+.pitch-col { display: flex; flex-direction: column; gap: 10px; }
+.pitch-hud {
+  text-align: center; padding: 12px 14px; border-radius: 12px;
+  background: var(--panel-2); border: 1px solid var(--line);
+}
+.game-timer {
+  font-family: 'Rajdhani'; font-weight: 700; font-size: 2rem; letter-spacing: .08em;
+  color: var(--gold); text-shadow: 0 0 18px rgba(245,194,75,.35);
+  font-variant-numeric: tabular-nums;
+}
+.game-timer.overtime {
+  font-size: 1.3rem; color: #ff5d6c;
+  animation: goatPulse .8s ease infinite alternate;
+}
+.game-score {
+  margin-top: 4px; font-family: 'Rajdhani'; font-weight: 600; font-size: 1.15rem;
+  color: var(--muted); letter-spacing: .04em;
+}
 .pitch-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 
 /* Les assets balle/voitures ont un fond noir : mix-blend-mode "screen"

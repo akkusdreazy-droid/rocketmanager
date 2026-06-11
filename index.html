@@ -169,17 +169,23 @@
           <div class="actions final-actions" id="finalActions"></div>
         </div>
 
-        <!-- Moteur 2D : terrain vertical + balle + 2 voitures -->
-        <div class="pitch" id="pitch">
-          <img class="pitch-bg" src="assets/field.png" alt="Terrain">
-          <img class="car car2" id="car2" src="assets/Car2.png" alt="Adversaire">
-          <img class="ball" id="ball" src="assets/Ball.png" alt="Balle">
-          <img class="car car1" id="car1" src="assets/Car1.png" alt="Votre équipe">
-          <div class="goal-flash" id="goalFlash"></div>
-          <div class="game-banner" id="gameBanner" hidden></div>
-          <div class="scorer-banner" id="scorerBanner" hidden>
-            <div class="scorer-label" id="scorerLabel">GAME 1</div>
-            <div class="scorer-name" id="scorerName"></div>
+        <!-- Moteur 2D : terrain vertical + balle + 2 voitures, avec HUD sous le terrain -->
+        <div class="pitch-col">
+          <div class="pitch" id="pitch">
+            <img class="pitch-bg" src="assets/field.png" alt="Terrain">
+            <img class="car car2" id="car2" src="assets/Car2.png" alt="Adversaire">
+            <img class="ball" id="ball" src="assets/Ball.png" alt="Balle">
+            <img class="car car1" id="car1" src="assets/Car1.png" alt="Votre équipe">
+            <div class="goal-flash" id="goalFlash"></div>
+            <div class="game-banner" id="gameBanner" hidden></div>
+            <div class="scorer-banner" id="scorerBanner" hidden>
+              <div class="scorer-label" id="scorerLabel">GAME 1</div>
+              <div class="scorer-name" id="scorerName"></div>
+            </div>
+          </div>
+          <div class="pitch-hud">
+            <div class="game-timer" id="gameTimer">5:00</div>
+            <div class="game-score" id="gameScore">0 – 0</div>
           </div>
         </div>
       </div>
@@ -202,7 +208,8 @@
 
   </main>
 
-  <!-- Audio local (le son de but a été retiré : buts en animation seule) -->
+  <!-- Audios locaux (le son de but est coupé après 2 s par le moteur) -->
+  <audio id="sfxGoal" src="assets/Rocket_League_Goal_Sound_3.mp3" preload="auto"></audio>
   <audio id="sfxVictory" src="assets/victory_3.mp3" preload="auto"></audio>
 
   <script src="data.js"></script>
